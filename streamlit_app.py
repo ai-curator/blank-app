@@ -1,55 +1,37 @@
 import streamlit as st
+import zipfile
 import os
 
-def write_code_to_file(folder_path):
-    folder_name = os.path.basename(folder_path)
-    output_file_index = 1
-    output_file_path = os.path.join(folder_path, f"{folder_name}_0{output_file_index}.txt")
-    max_file_size = 3 * 1024 * 1024  # 3 MB
-    excluded_files = {'.next', 'node_modules', 'components/ui', '.json', '.gitignore', 'next-env.ts', 'next.config.js', 'README.md', '.txt'}
+def process_zip_file(zip_file):
+    excluded_files = {
+        '.next', 'node_modules', 'components/ui', '.json', '.gitignore', 'next-env.ts', 
+        'next.config.js', 'README.md', '.txt'
+    }
     extensions = {'.tsx', '.ts', '.js', '.jsx'}
-    file_count = 0
-    total_files = 0
-
-    def create_new_file():
-        nonlocal output_file_index, output_file_path, output_file
-        output_file_index += 1
-        output_file_path = os.path.join(folder_path, f"{folder_name}_0{output_file_index}.txt")
-        output_file = open(output_file_path, 'w', encoding='utf-8')
-
-    output_file = open(output_file_path, 'w', encoding='utf-8')
     
-    for root, dirs, files in os.walk(folder_path):
-        dirs[:] = [d for d in dirs if d not in excluded_files]
-        total_files += len(files)
-        for file in files:
-            if any(file.endswith(ext) for ext in extensions):
-                file_path = os.path.join(root, file)
-                output_file.write(f'// 파일 상대 경로: {os.path.relpath(file_path, folder_path)}\n')
-                with open(file_path, 'r', encoding='utf-8') as code_file:
-                    code_content = code_file.read()
-                    output_file.write(code_content + '\n\n')
-                
-                file_count += 1
-                if output_file.tell() > max_file_size:
-                    output_file.close()
-                    create_new_file()
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        file_count = 0
+        for file_name in zip_ref.namelist():
+            if any(file_name.startswith(excluded) for excluded in excluded_files):
+                continue
+            if file_name.endswith(tuple(extensions)):
+                with zip_ref.open(file_name) as file:
+                    content = file.read().decode('utf-8')
+                    st.write(f"파일명: {file_name}")
+                    st.code(content, language='javascript')
+                    file_count += 1
+        return file_count
+
+st.title('코드 파일 처리기 (ZIP 지원)')
+
+uploaded_file = st.file_uploader("ZIP 파일을 업로드하세요", type=['zip'])
+
+if uploaded_file is not None:
+    file_details = {"FileName": uploaded_file.name, "FileType": uploaded_file.type, "FileSize": uploaded_file.size}
+    st.write(file_details)
     
-    output_file.close()
-    return total_files, file_count
-
-st.title('코드 파일 기록기')
-
-folder_path = st.text_input("폴더 경로를 입력하세요:")
-
-if st.button('실행'):
-    if folder_path:
-        if os.path.exists(folder_path):
-            total_files, recorded_files = write_code_to_file(folder_path)
-            st.success(f"처리 완료!")
-            st.info(f"총 {total_files}개의 파일이 있습니다.")
-            st.info(f"총 {recorded_files}개의 파일을 기록했습니다.")
-        else:
-            st.error("입력한 폴더 경로가 존재하지 않습니다.")
+    if zipfile.is_zipfile(uploaded_file):
+        file_count = process_zip_file(uploaded_file)
+        st.success(f"ZIP 파일에서 총 {file_count}개의 코드 파일을 처리했습니다.")
     else:
-        st.warning("폴더 경로를 입력해주세요.")
+        st.error("올바른 ZIP 파일이 아닙니다.")
